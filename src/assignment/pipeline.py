@@ -12,7 +12,7 @@ from agents.security_boundary import TRUSTED_EGRESS_HOSTS, contains_secret
 from assignment.rate_limiter import RateLimitPlugin
 from assignment.audit_log import AuditLogPlugin
 from assignment.monitoring import MonitoringAlert
-from guardrails.input_guardrails import InputGuardrailPlugin
+from guardrails.input_guardrails import InputGuardrailPlugin, detect_injection, topic_filter
 from guardrails.output_guardrails import OutputGuardrailPlugin, content_filter
 
 
@@ -59,8 +59,32 @@ async def run_assignment_suite(pipeline) -> dict:
         agent, runner = create_blue_agent(plugins)
     output = Path(pipeline.get("output_dir", Path(__file__).resolve().parents[2] / "outputs"))
     output.mkdir(parents=True, exist_ok=True)
+    # Resume only actual successful, unmodified replies from a prior Blue run.
+    # The completed artifact records original request IDs and audit provenance.
+    prior = {}
+    resumed_ids = []
+    if pipeline.get("resume_audit"):
+        audit_path = output / "audit_log.json"
+        result_path = output / "results.json"
+        if audit_path.exists() and result_path.exists():
+            metadata = json.loads(result_path.read_text(encoding="utf-8"))
+            if (metadata.get("llm_provider"), metadata.get("llm_model")) == (runner.provider, runner.model):
+                for row in json.loads(audit_path.read_text(encoding="utf-8")):
+                    if (row.get("blocked") is False and row.get("layer") is None
+                            and content_filter(row.get("output", ""))["safe"]
+                            and row.get("output")):
+                        prior[(row["user_id"], row["input"])] = row
 
     async def execute(text, user_id):
+        previous = prior.get((user_id, text))
+        if (previous and detect_injection(text) == "ALLOW" and topic_filter(text) == "ALLOW"):
+            audit.logs.append(dict(previous))
+            monitor.total_requests += 1
+            resumed_ids.append(previous["request_id"])
+            print(f"Resumed {user_id} from original live audit {previous['request_id']}", flush=True)
+            return dict(input=text, blocked=previous["blocked"], layer=previous["layer"],
+                        redacted=False, response_preview=previous["output"][:300],
+                        response_source="prior_live_audit", original_request_id=previous["request_id"])
         print(f"Running {user_id}", flush=True)
         request_id = uuid4().hex
         audit.record_input(user_id=user_id, text=text, request_id=request_id)
@@ -78,7 +102,7 @@ async def run_assignment_suite(pipeline) -> dict:
                     if status not in (429, 500, 502, 503, 504) or attempt == 2:
                         raise
                     print(f"Transient provider HTTP {status}; retry {attempt + 1}/2", flush=True)
-                    await asyncio.sleep(2 * (attempt + 1))
+                    await asyncio.sleep(20 if status == 429 else 2 * (attempt + 1))
             if not response:
                 raise RuntimeError("Blue model returned an empty response")
         except Exception:
@@ -131,6 +155,7 @@ async def run_assignment_suite(pipeline) -> dict:
         "attack_queries": [await execute(q, f"attack-{i}") for i, q in enumerate(attacks)],
         "edge_cases": [await execute(q, f"edge-{i}") for i, q in enumerate(edges)],
     }
+    results["audit_resume"] = {"count": len(resumed_ids), "original_request_ids": resumed_ids}
     # Exercise the real pre-model limiter in a tight burst. No model is needed
     # to observe admission decisions; inference latency must not stretch the burst.
     from google.genai import types

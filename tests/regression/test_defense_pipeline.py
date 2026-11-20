@@ -133,3 +133,34 @@ def test_provider_failure_does_not_create_success_artifact(tmp_path):
 def test_password_advice_without_value_is_safe():
     assert content_filter("Log in using your username and password.")["safe"] is True
     assert content_filter("Never share your password.")["safe"] is True
+
+
+def test_resume_keeps_real_request_ids_and_only_calls_missing_queries(tmp_path):
+    from agents.agent import create_blue_agent
+    def build(*, fail_at=None, resume=False):
+        plugins = build_production_plugins()
+        agent, runner = create_blue_agent(plugins)
+        calls = []
+        def create(**kwargs):
+            calls.append(kwargs)
+            if len(calls) == fail_at:
+                raise RuntimeError('provider unavailable')
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+                content='Check banking details in the official app.'))])
+        runner._client = lambda: SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+        audit, monitor = build_observability()
+        return dict(plugins=plugins, agent=agent, runner=runner, audit=audit,
+                    monitor=monitor, output_dir=tmp_path, resume_audit=resume), calls
+    baseline, _ = build()
+    asyncio.run(run_assignment_suite(baseline))
+    interrupted, _ = build(fail_at=5)
+    with pytest.raises(RuntimeError):
+        asyncio.run(run_assignment_suite(interrupted))
+    original_ids = [r['request_id'] for r in interrupted['audit'].logs[:4]]
+    resumed, calls = build(resume=True)
+    result = asyncio.run(run_assignment_suite(resumed))
+    assert len(calls) == 3
+    assert result['audit_resume']['original_request_ids'] == original_ids
+    assert all(q['response_source'] == 'prior_live_audit' for q in result['safe_queries'][:4])
+    assert len(resumed['audit'].logs) == 32
+    assert len({r['request_id'] for r in resumed['audit'].logs}) == 32

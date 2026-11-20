@@ -202,3 +202,7 @@ leak thật và chưa thể kết luận điểm bài. `scripts/grade.py` tự s
 không viết JSON hoặc báo cáo điểm bằng tay.
 
 Có thể tái chạy toàn bộ bằng PowerShell: `.\scripts\run_lab.ps1` (thêm `-Install` để cài dependency). Lệnh dừng khi một bước thất bại; cần đọc artifact CP4 để phân biệt lỗi provider, model từ chối và plugin chặn.
+
+CP3 có thể tiếp tục các phản hồi model thật đã thành công từ audit của lần chạy trước, nếu metadata provider/model trùng và policy hiện tại vẫn cho phép. Artifact ghi `audit_resume`, `response_source` và request ID gốc; request lỗi hoặc bị redact không được dùng lại. Câu chưa có phản hồi vẫn gọi đúng model Blue.
+
+Resume phải được bật rõ bằng `.\.venv\Scripts\python.exe src/main.py --part 3 --resume`. Mặc định `--part 3` luôn chạy mới, phù hợp cho grader replay.
