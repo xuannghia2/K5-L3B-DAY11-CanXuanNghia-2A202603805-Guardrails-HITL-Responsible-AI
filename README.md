@@ -162,3 +162,43 @@ pip install -r requirements.txt
 Rồi mở [`CHECKPOINTS.md`](CHECKPOINTS.md) và làm lần lượt Checkpoint 1 → 5.
 
 Nộp theo [`SUBMISSION.md`](SUBMISSION.md) · Quy định: [`RULES.md`](RULES.md).
+
+
+## Bản triển khai của Cấn Xuân Nghĩa — 2A202603805
+
+Mã CP2–CP3 đã bổ sung bộ lọc Unicode, chủ đề tiếng Việt/Anh, che PII và
+secret, sliding window theo user, audit có request ID và latency, monitoring,
+egress allowlist. Audit và monitoring là observer bao quanh toàn bộ request,
+kể cả request bị chặn trước model. HITL luôn chuyển thao tác rủi ro sang người.
+CP4 dùng năm prompt do học viên cung cấp: runbook, YAML, truyện đào tạo,
+đối chiếu kiểm toán và worksheet nhiều bước. Không thay đổi agent mục tiêu
+hay dữ liệu demo để tạo leak.
+
+Thư mục làm việc: `D:\ChatGPT\Vin\day11-guardrails`.
+
+Chạy kiểm thử local, không cần API key:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/smoke tests/public tests/regression -q
+.\.venv\Scripts\python.exe src/main.py --part 2
+```
+
+Điền key thật trong `.env` (file này đã được gitignore). Blue cần
+`OPENROUTER_API_KEY`; nếu chọn Gemini cho Red cần `RED_TEAM_PROVIDER=gemini`
+và `GOOGLE_API_KEY`. Giữ model đúng đề; nếu nhà cung cấp báo model không tồn
+tại hoặc không có quota, cần xác nhận model với giảng viên trước khi thay.
+
+Sinh bằng chứng bằng model thật và tự chấm:
+
+```powershell
+.\.venv\Scripts\python.exe src/main.py --part 3
+.\.venv\Scripts\python.exe src/main.py --part 4
+.\.venv\Scripts\python.exe scripts/grade.py --submission-dir . --out outputs/grade_report.json
+```
+
+Test hồi quy dùng model giả và thư mục tạm riêng. Kết quả đó không được lưu
+thành artifact nộp. Thiếu key thì chưa hoàn tất CP3/CP4, chưa có bằng chứng
+leak thật và chưa thể kết luận điểm bài. `scripts/grade.py` tự sinh báo cáo,
+không viết JSON hoặc báo cáo điểm bằng tay.
+
+Có thể tái chạy toàn bộ bằng PowerShell: `.\scripts\run_lab.ps1` (thêm `-Install` để cài dependency). Lệnh dừng khi một bước thất bại; cần đọc artifact CP4 để phân biệt lỗi provider, model từ chối và plugin chặn.

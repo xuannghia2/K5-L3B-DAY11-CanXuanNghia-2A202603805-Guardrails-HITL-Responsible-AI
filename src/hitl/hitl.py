@@ -67,32 +67,16 @@ class ConfidenceRouter:
         Returns:
             RoutingDecision with routing action and metadata
         """
-        # Optional: Implement routing logic
-        #
-        # 1. Check if action_type is in HIGH_RISK_ACTIONS
-        #    -> If yes: always escalate (action="escalate", priority="high",
-        #       requires_human=True, reason="High-risk action: {action_type}")
-        #
-        # 2. Check confidence thresholds:
-        #    - confidence >= 0.9:
-        #      action="auto_send", priority="low",
-        #      requires_human=False, reason="High confidence"
-        #
-        #    - 0.7 <= confidence < 0.9:
-        #      action="queue_review", priority="normal",
-        #      requires_human=True, reason="Medium confidence — needs review"
-        #
-        #    - confidence < 0.7:
-        #      action="escalate", priority="high",
-        #      requires_human=True, reason="Low confidence — escalating"
-
-        return RoutingDecision(
-            action="auto_send",
-            confidence=confidence,
-            reason="TODO: implement routing logic",
-            priority="low",
-            requires_human=False,
-        )  # TODO: Replace with implementation
+        if not 0.0 <= confidence <= 1.0:
+            raise ValueError("Confidence must be between 0 and 1")
+        if action_type in HIGH_RISK_ACTIONS:
+            return RoutingDecision("escalate", confidence,
+                                   f"High-risk action: {action_type}", "high", True)
+        if confidence >= self.HIGH_THRESHOLD:
+            return RoutingDecision("auto_send", confidence, "High confidence", "low", False)
+        if confidence >= self.MEDIUM_THRESHOLD:
+            return RoutingDecision("queue_review", confidence, "Medium confidence", "normal", True)
+        return RoutingDecision("escalate", confidence, "Low confidence", "high", True)
 
 
 # ============================================================
@@ -112,38 +96,7 @@ class ConfidenceRouter:
 # Think about real banking scenarios where human judgment is critical.
 # ============================================================
 
-hitl_decision_points = [
-    {
-        "id": 1,
-        "name": "TODO: Name this decision point",
-        "trigger": "TODO: When does this trigger?",
-        "hitl_model": "TODO: human-in-the-loop / human-on-the-loop / human-as-tiebreaker",
-        "context_needed": "TODO: What does the reviewer need to see?",
-        "example": "TODO: Give a concrete example scenario",
-        "approval_path": "TODO: Explain approve, reject and timeout behavior",
-        "audit_fields": "TODO: List correlation ID, intent, diff and reviewer decision",
-    },
-    {
-        "id": 2,
-        "name": "TODO: Name this decision point",
-        "trigger": "TODO: When does this trigger?",
-        "hitl_model": "TODO: human-in-the-loop / human-on-the-loop / human-as-tiebreaker",
-        "context_needed": "TODO: What does the reviewer need to see?",
-        "example": "TODO: Give a concrete example scenario",
-        "approval_path": "TODO: Explain approve, reject and timeout behavior",
-        "audit_fields": "TODO: List correlation ID, intent, diff and reviewer decision",
-    },
-    {
-        "id": 3,
-        "name": "TODO: Name this decision point",
-        "trigger": "TODO: When does this trigger?",
-        "hitl_model": "TODO: human-in-the-loop / human-on-the-loop / human-as-tiebreaker",
-        "context_needed": "TODO: What does the reviewer need to see?",
-        "example": "TODO: Give a concrete example scenario",
-        "approval_path": "TODO: Explain approve, reject and timeout behavior",
-        "audit_fields": "TODO: List correlation ID, intent, diff and reviewer decision",
-    },
-]
+hitl_decision_points = [{'id': 1, 'name': 'Money transfer approval', 'trigger': 'Any transfer_money action, regardless of model confidence', 'hitl_model': 'human-in-the-loop', 'context_needed': 'Authenticated customer intent, masked source/destination, amount, fees, proposed action diff', 'example': 'A customer requests a 50 million VND transfer to a new beneficiary.', 'approval_path': 'Approve: record authenticated reviewer decision bound to this request before execution. Reject or timeout: no action; log and notify customer.', 'audit_fields': 'request_id, intent, masked proposed action/diff, policy decision, reviewer_id, approval_id, decision, timestamp, timeout'}, {'id': 2, 'name': 'Account closure approval', 'trigger': 'Any close_account or delete_data action', 'hitl_model': 'human-in-the-loop', 'context_needed': 'Verified identity, outstanding balance, retention requirements, proposed deletion scope', 'example': 'An email asks to close the customer account and delete records.', 'approval_path': 'Approve: record authenticated reviewer decision bound to this request before execution. Reject or timeout: no action; log and notify customer.', 'audit_fields': 'request_id, intent, masked proposed action/diff, policy decision, reviewer_id, approval_id, decision, timestamp, timeout'}, {'id': 3, 'name': 'Uncertain banking answer', 'trigger': 'Confidence below 0.9; escalate immediately below 0.7', 'hitl_model': 'human-in-the-loop', 'context_needed': 'Question, redacted answer, source evidence, uncertainty and policy checks', 'example': 'Two product documents disagree about an early withdrawal penalty.', 'approval_path': 'Approve: record authenticated reviewer decision bound to this request before execution. Reject or timeout: no action; log and notify customer.', 'audit_fields': 'request_id, intent, masked proposed action/diff, policy decision, reviewer_id, approval_id, decision, timestamp, timeout'}]
 
 
 # ============================================================

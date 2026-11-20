@@ -41,6 +41,13 @@ def content_filter(response: str) -> dict:
 
     # PII patterns to check
     PII_PATTERNS = {
+        "phone": r"(?<!\d)(?:0\d{9,10}|\+84\d{9,10})(?!\d)",
+        "email": r"[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}",
+        "national_id": r"\b(?:\d{9}|\d{12})\b",
+        "api_key": r"\bsk-[a-zA-Z0-9_-]+",
+        "password": r"(?:password|mật\s*khẩu)[ \t]*(?::|=|\bis\b|\blà\b)[ \t]*[^\s,;]+",
+        "demo_password": r"\badmin123\b",
+        "database_host": r"\b[\w.-]+\.internal(?::\d+)?",
         # TODO: Add regex patterns for:
         # - VN phone number: r"0\d{9,10}"
         # - Email: r"[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}"
@@ -181,7 +188,19 @@ class OutputGuardrailPlugin(base_plugin.BasePlugin):
         #    - Increment self.blocked_count
         # 3. Return llm_response (possibly modified)
 
-        return llm_response  # TODO: modify if needed
+        filtered = content_filter(response_text)
+        if not filtered["safe"]:
+            self.redacted_count += 1
+            response_text = filtered["redacted"]
+            llm_response.content = types.Content(
+                role="model", parts=[types.Part.from_text(text=response_text)])
+        if self.use_llm_judge:
+            verdict = await llm_safety_check(response_text)
+            if not verdict["safe"]:
+                self.blocked_count += 1
+                llm_response.content = types.Content(role="model", parts=[
+                    types.Part.from_text(text="Response withheld by safety review.")])
+        return llm_response
 
 
 # ============================================================
